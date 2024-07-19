@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 from jsonargparse import CLI
 
 from . import LLMNeedleHaystackTester, LLMMultiNeedleHaystackTester
-from .evaluators import Evaluator, LangSmithEvaluator, OpenAIEvaluator
-from .providers import Anthropic, ModelProvider, OpenAI, Cohere
+from .evaluators import Evaluator, LangSmithEvaluator, OpenAIEvaluator, GoogleEvaluator
+from .providers import Anthropic, ModelProvider, OpenAI, Cohere, Google
 
 load_dotenv()
 
@@ -65,6 +65,8 @@ def get_model_to_test(args: CommandArgs) -> ModelProvider:
             return Anthropic(model_name=args.model_name)
         case "cohere":
             return Cohere(model_name=args.model_name)
+        case "google":
+            return Google(model_name=args.model_name)
         case _:
             raise ValueError(f"Invalid provider: {args.provider}")
 
@@ -84,6 +86,10 @@ def get_evaluator(args: CommandArgs) -> Evaluator:
     match args.evaluator.lower():
         case "openai":
             return OpenAIEvaluator(model_name=args.evaluator_model_name,
+                                   question_asked=args.retrieval_question,
+                                   true_answer=args.needle)
+        case "google":
+            return GoogleEvaluator(model_name=args.evaluator_model_name,
                                    question_asked=args.retrieval_question,
                                    true_answer=args.needle)
         case "langsmith":

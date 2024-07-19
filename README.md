@@ -1,8 +1,19 @@
 # Needle In A Haystack - Pressure Testing LLMs
 
+This repository is a fork of Greg Kamradt code https://twitter.com/GregKamradt. 
+
+Original Repository: https://github.com/gkamradt/LLMTest_NeedleInAHaystack
+
+This fork adds support for using **Google Gemini** models as the provider and/or evaluator.
+
+```zsh
+needlehaystack.run_test --provider google --evaluator google  --model_name "gemini-1.5-pro" --evaluator_model_name "gemini-1.5-pro" --document_depth_percents "[50]" --context_lengths "[200]"
+```
+
+### Original readme below
 A simple 'needle in a haystack' analysis to test in-context retrieval ability of long context LLMs.
 
-Supported model providers: OpenAI, Anthropic, Cohere
+Supported model providers: **Google**, OpenAI, Anthropic, Cohere
 
 Get the behind the scenes on the [overview video](https://youtu.be/KwRRuiCCdmc).
 
@@ -32,7 +43,7 @@ source venv/bin/activate
 ### Environment Variables
 
 - `NIAH_MODEL_API_KEY` - API key for interacting with the model. Depending on the provider, this gets used appropriately with the correct sdk.
-- `NIAH_EVALUATOR_API_KEY` - API key to use if `openai` evaluation strategy is used.
+- `NIAH_EVALUATOR_API_KEY` - API key to use if `openai` or `google` evaluation strategy is used.
 
 ### Install Package
 
@@ -46,10 +57,10 @@ pip install needlehaystack
 
 Start using the package by calling the entry point `needlehaystack.run_test` from command line.
 
-You can then run the analysis on OpenAI, Anthropic, or Cohere models with the following command line arguments:
+You can then run the analysis on Google Gemini, OpenAI, Anthropic, or Cohere models with the following command line arguments:
 
-- `provider` - The provider of the model, available options are `openai`, `anthropic`, and `cohere`. Defaults to `openai`
-- `evaluator` - The evaluator, which can either be a `model` or `LangSmith`. See more on `LangSmith` below. If using a `model`, only `openai` is currently supported. Defaults to `openai`.
+- `provider` - The provider of the model, available options are `openai`, `anthropic`, `google`, and `cohere`. Defaults to `openai`
+- `evaluator` - The evaluator, which can either be a `openai`, `google`, or `LangSmith`. See more on `LangSmith` below. Defaults to `openai`.
 - `model_name` - Model name of the language model accessible by the provider. Defaults to `gpt-3.5-turbo-0125`
 - `evaluator_model_name` - Model name of the language model accessible by the evaluator. Defaults to `gpt-3.5-turbo-0125`
 

@@ -12,6 +12,7 @@ distro==1.8.0
 filelock==3.13.1
 frozenlist==1.4.0
 fsspec==2023.10.0
+google-generativeai==0.7.2
 h11==0.14.0
 httpcore==1.0.2
 httpx==0.25.2
@@ -20,13 +21,14 @@ idna==3.6
 jsonargparse==4.27.5
 jsonpatch==1.33
 jsonpointer==2.4
-langchain==0.1.9
-langchain-community>=0.0.24
-langchain-core>=0.1.26
+langchain==0.2.9
+langchain-anthropic==0.1.13
+langchain-cohere==0.1.5
+langchain-community==0.2.7
+langchain-core==0.2.21
+langchain-google-genai==1.0.7
+langchain-openai==0.1.7
 langsmith>=0.1.8
-langchain_openai
-langchain_anthropic
-langchain_cohere
 marshmallow==3.20.1
 multidict==6.0.4
 mypy-extensions==1.0.0
@@ -50,3 +52,4 @@ typing_extensions==4.8.0
 urllib3==2.1.0
 yarl==1.9.3
 pytest==8.1.1
+sentencepiece==0.2.0
