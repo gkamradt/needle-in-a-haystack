@@ -7,6 +7,7 @@ import pytest
 from needlehaystack.core import tokens
 from needlehaystack.haystacks import RepeatingTextHaystack
 from needlehaystack.haystacks.base import HaystackSource
+from needlehaystack.haystacks.text import LARGE_TEXT_THRESHOLD_BYTES
 
 
 def test_satisfies_protocol() -> None:
@@ -40,3 +41,14 @@ def test_empty_text_raises() -> None:
     h = RepeatingTextHaystack(text="")
     with pytest.raises(ValueError, match="non-empty"):
         h.load(min_tokens=100)
+
+
+def test_small_text_emits_no_warning(recwarn: pytest.WarningsRecorder) -> None:
+    RepeatingTextHaystack(text="small unit")
+    assert not [w for w in recwarn.list if "FilesHaystack" in str(w.message)]
+
+
+def test_large_text_warns_and_points_at_files_haystack() -> None:
+    big = "x" * (LARGE_TEXT_THRESHOLD_BYTES + 1)
+    with pytest.warns(UserWarning, match="FilesHaystack"):
+        RepeatingTextHaystack(text=big)
