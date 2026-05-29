@@ -1,0 +1,9 @@
+id: "fake-canned"
+runtime:
+  sdk: "fake"
+  api: "fake"
+client: {}
+request:
+  model: "fake-model"
+  mode: "canned"
+  response_text: "The secret code is 12345."

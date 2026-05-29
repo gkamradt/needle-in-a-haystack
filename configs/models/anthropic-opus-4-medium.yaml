@@ -1,0 +1,21 @@
+id: "anthropic-opus-4-medium"
+agent:
+  MAX_ACTIONS_BASELINE_MULTIPLIER: 5.0
+  MAX_CONTEXT_LENGTH: 175_000
+runtime:
+  sdk: "anthropic-python"
+  api: "messages"
+  state: "manual_rolling"
+client:
+  api_key_env: "ANTHROPIC_API_KEY"
+request:
+  model: "claude-opus-4"
+  max_tokens: 120000
+  stream: true
+  thinking:
+    type: "adaptive"
+  output_config:
+    effort: "medium"
+pricing:
+  input: 5.00
+  output: 25.00

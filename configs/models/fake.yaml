@@ -1,0 +1,10 @@
+id: "fake"
+runtime:
+  sdk: "fake"
+  api: "fake"
+client: {}
+request:
+  model: "fake-model"
+  # FakeProvider-specific knobs, read by providers/registry.py:_build_fake.
+  mode: "canned"
+  response_text: "ok"

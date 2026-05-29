@@ -1,0 +1,26 @@
+run_name: "uuid-single-gpt4o"
+model: "openai-gpt-4o"
+
+task:
+  type: "uuid"
+  needle_template: "The secret code is {uuid}."
+  question_template: "What is the secret code?"
+
+haystack:
+  type: "files"
+  path: "PaulGrahamEssays"
+
+sweep:
+  context_lengths: {min: 1000, max: 16000, num: 6, scale: "linear"}
+  depth_percents:  {min: 0,    max: 100,   num: 11, scale: "linear"}
+  # Multiple seeds → multiple UUIDs per cell.
+  seeds: [1, 2, 3]
+
+runner:
+  concurrency: 4
+  retries: 2
+  resume: true
+
+store:
+  type: "jsonl"
+  path: "results/uuid-single-gpt4o.jsonl"

@@ -25,12 +25,15 @@ def test_handles_very_large_request() -> None:
     assert tokens.count(out) >= 50_000
 
 
-def test_descriptor_truncates_preview() -> None:
-    long_text = "a" * 500
-    h = RepeatingTextHaystack(text=long_text)
+def test_descriptor_round_trips_source_text() -> None:
+    """Descriptor must hold the full source text so reconstruction can rebuild
+    the exact context the model saw."""
+    text = "Some background prose. More of it."
+    h = RepeatingTextHaystack(text=text, separator="\n---\n")
     d = h.descriptor()
     assert d["type"] == "text"
-    assert len(d["text_preview"]) <= 60
+    assert d["text"] == text
+    assert d["separator"] == "\n---\n"
 
 
 def test_empty_text_raises() -> None:

@@ -1,0 +1,26 @@
+run_name: "uuid-tiny"
+model: "tests/configs/fake.yaml"
+
+task:
+  type: "uuid"
+  needle_template: "The secret code is {uuid}."
+  question_template: "What is the secret code?"
+
+haystack:
+  type: "text"
+  text: "Filler sentence. Another filler sentence. More background prose."
+
+sweep:
+  context_lengths: [500]
+  depth_percents: [50.0]
+  seeds: [42]
+
+runner:
+  concurrency: 1
+  retries: 0
+  resume: true
+
+store:
+  type: "jsonl"
+  # filled in by the test
+  path: "results/_should_be_overridden.jsonl"

@@ -1,0 +1,13 @@
+id: "openai-gpt-4o"
+runtime:
+  sdk: "openai-python"
+  api: "chat_completions"
+client:
+  api_key_env: "OPENAI_API_KEY"
+request:
+  model: "gpt-4o"
+  max_tokens: 4096
+  temperature: 0.0
+pricing:
+  input: 2.50
+  output: 10.00

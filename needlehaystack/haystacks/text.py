@@ -33,4 +33,8 @@ class RepeatingTextHaystack:
         return unit * repeats
 
     def descriptor(self) -> dict[str, str]:
-        return {"type": self.name, "text_preview": self.text[:60]}
+        # We store the source `text` (and separator) in full because the
+        # reconstruction recipe needs to rebuild the exact context the
+        # model saw. For `RepeatingTextHaystack` the source is the *unit*
+        # that gets repeated, not the rendered context, so it's small.
+        return {"type": self.name, "text": self.text, "separator": self.separator}

@@ -87,17 +87,10 @@ def test_each_row_has_recipe_and_no_rendered_context(tmp_path: Path) -> None:
         assert recipe["haystack"]["type"] == "text"
         assert len(recipe["needle_placements"]) == 1
         assert recipe["final_context_token_count"] >= row["context_length"]
-        # No rendered context fields on the row (the haystack descriptor
-        # may carry a 60-char `text_preview`; that's fine — what we want
-        # to guarantee is that nothing the size of an actual rendered
-        # context tagged onto the row).
+        # The recipe carries the small **source** text needed for
+        # reconstruction, not the rendered full-length context.
+        # Rows must stay tiny even for big sweeps.
         assert "rendered_context" not in row
-        assert "context" not in row  # only `context_length`, no rendered text
-        # Sentinel: a string that's in the haystack text but well past
-        # the 60-char `text_preview` window. Confirms we're not stashing
-        # the full background somewhere.
-        assert "Line number 19 of the background text" not in json.dumps(row)
-        # And the row is tiny — well under 10 KB.
         assert len(raw.encode("utf-8")) < 10_000
 
 

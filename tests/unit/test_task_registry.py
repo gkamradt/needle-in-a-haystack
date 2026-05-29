@@ -79,15 +79,27 @@ def test_duplicate_registration_raises() -> None:
 
 
 def test_adding_a_task_does_not_require_touching_core_or_cli() -> None:
-    """Smoke check: nothing in `needlehaystack.tasks` knows about
-    the runner or the CLI. Importing the package only pulls in core
-    types and the building-block modules.
+    """Smoke check: importing `needlehaystack.tasks` in a fresh Python
+    process does not pull in the CLI. Adding a new task must not force a
+    contributor to touch `cli/`.
+
+    We use a subprocess because pytest itself may have already imported
+    `needlehaystack.cli.*` for other tests.
     """
+    import subprocess
     import sys
 
-    import needlehaystack.tasks  # noqa: F401
-
-    # If this assertion ever changes, we've leaked a dependency that
-    # would force task authors to touch core/cli to add a new task.
-    leaked = [m for m in sys.modules if m.startswith("needlehaystack.cli")]
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, needlehaystack.tasks; "
+            "leaked = sorted(m for m in sys.modules if m.startswith('needlehaystack.cli')); "
+            "print(','.join(leaked))",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    leaked = [m for m in proc.stdout.strip().split(",") if m]
     assert not leaked, f"task package pulled in CLI modules: {leaked}"
