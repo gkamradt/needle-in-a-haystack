@@ -17,7 +17,7 @@ from ..core.types import NeedlePlacement
 # Maximum number of tokens we'll walk backward looking for a sentence
 # boundary before giving up and inserting at the raw point. Bounded so
 # the lookup is O(MAX_PERIOD_SNAP) per needle.
-MAX_PERIOD_SNAP: int = 50
+MAX_PERIOD_SNAP: int = 100
 
 
 class InsertResult(NamedTuple):
