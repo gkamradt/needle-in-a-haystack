@@ -1,9 +1,0 @@
-You are a helpful AI bot that answers questions for a user. Keep your response short and direct
-
-Human: <context>
-{context}
-</context>
-
-{retrieval_question} Don't give information outside the document or repeat your findings
-
-Assistant: Here is the most relevant sentence in the context:

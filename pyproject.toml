@@ -1,0 +1,88 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "needlehaystack"
+version = "2.0.0"
+description = "Pressure-test LLM long-context retrieval with the Needle In A Haystack benchmark."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE.txt" }
+authors = [{ name = "Greg Kamradt", email = "greg@gregkamradt.com" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "tiktoken>=0.7",
+    # Provider SDKs are wired up in Phase 7; keeping them as deps now so
+    # `uv sync` already has them when we get there.
+    "openai>=1.40",
+    "anthropic>=0.39",
+    "cohere>=5.1",
+    # CLI / config plumbing (Phase 6).
+    "pydantic>=2",
+    "pyyaml>=6",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.10",
+    "pytest>=8.1",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "types-pyyaml",
+]
+
+[project.urls]
+Homepage = "https://github.com/gkamradt/needle-in-a-haystack"
+Repository = "https://github.com/gkamradt/needle-in-a-haystack"
+Issues = "https://github.com/gkamradt/needle-in-a-haystack/issues"
+
+# The `niah` CLI is added in Phase 6. The v1 `needlehaystack.run_test`
+# entry point is intentionally not declared — v2.0.0 is a clean break.
+
+[tool.hatch.build.targets.wheel]
+packages = ["needlehaystack"]
+# Non-.py files inside the package (PaulGrahamEssays/*.txt) are picked up
+# automatically by hatch walking the package tree.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["viz", "original_results"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[[tool.mypy.overrides]]
+# Third-party libs with no shipped stubs.
+module = ["tiktoken", "tiktoken.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+asyncio_mode = "auto"
