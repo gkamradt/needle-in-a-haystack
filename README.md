@@ -13,33 +13,64 @@ Adding more is a small plugin.
 
 ---
 
+## Install
+
+```bash
+pip install needlehaystack
+# or:  uv add needlehaystack
+```
+
+Drop the API key(s) you'll use into a `.env` file in the working directory —
+`niah` loads it automatically:
+
+```bash
+echo "OPENAI_API_KEY=sk-..." > .env
+```
+
 ## Quick start
 
-```bash
-# 1. Clone + install (uv handles the venv + lock)
-git clone https://github.com/gkamradt/needle-in-a-haystack.git
-cd needle-in-a-haystack
-uv sync
-
-# 2. Drop your API key(s) in a .env file (auto-loaded by niah; .env is gitignored)
-echo "OPENAI_API_KEY=sk-..." >> .env
-# or: export OPENAI_API_KEY=sk-...   if you prefer not to use .env
-
-# 3. Smoke-test the full pipeline with no API calls
-uv run niah run configs/runs/smoke.fake.yaml
-
-# 4. Validate then run an example against a real model
-uv run niah validate configs/runs/single_needle.example.yaml
-uv run niah run      configs/runs/single_needle.example.yaml
-```
-
-The run writes one JSONL row per sweep cell. Each row carries the score, token
-usage, cost, and a tiny **recipe** that lets you exactly reconstruct the
-context the model saw:
+Paste two tiny YAMLs and run. No clone, no extra setup.
 
 ```bash
-niah reconstruct results/single-needle-opus.jsonl --row 0
+# A model config (one file per model — reusable across many runs)
+cat > model.yaml <<'YAML'
+id: "openai-gpt-4o-mini"
+runtime: {sdk: "openai-python", api: "chat_completions"}
+client:  {api_key_env: "OPENAI_API_KEY"}
+request: {model: "gpt-4o-mini", max_tokens: 256, temperature: 0.0}
+pricing: {input: 0.15, output: 0.60}     # USD per 1M tokens
+YAML
+
+# A run config (what to actually do)
+cat > run.yaml <<'YAML'
+run_name: "first-run"
+model:    "model.yaml"
+
+task:     {type: "uuid"}                  # also: single, multi, uuid_chain
+haystack: {type: "files", path: "PaulGrahamEssays"}   # bundled in the wheel
+
+sweep:
+  context_lengths: [2000, 8000]
+  depth_percents:  [10.0, 50.0, 90.0]
+
+runner:   {concurrency: 3, retries: 1, resume: true}
+store:    {type: "jsonl", path: "results.jsonl"}
+YAML
+
+niah validate run.yaml
+niah run      run.yaml
 ```
+
+You get six result rows in `results.jsonl` — one per `(length × depth)` cell —
+each with score, token usage, cost, and a tiny **recipe** that lets you rebuild
+the exact context the model saw:
+
+```bash
+niah reconstruct results.jsonl --row 0
+```
+
+That's the whole user-facing surface: write configs, `niah run` them, optionally
+`niah reconstruct` to inspect what a model actually received.
 
 ---
 
@@ -208,17 +239,32 @@ so contributors never need to edit the runner.
 
 ---
 
-## Contributing
+## Develop / contribute
+
+The repo ships an `examples/` worth of configs under [`configs/`](./configs)
+and a FakeProvider so the entire pipeline runs end-to-end with no API keys.
 
 ```bash
+git clone https://github.com/gkamradt/needle-in-a-haystack.git
+cd needle-in-a-haystack
 uv sync --extra dev
+
+# Full end-to-end run against the FakeProvider — no API keys needed
+uv run niah run configs/runs/smoke.fake.yaml
+
+# Run the example configs against real providers (needs .env keys)
+uv run niah run configs/runs/single_needle.example.yaml
+
+# Lint / format / type-check / test (same as CI)
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy needlehaystack
 uv run pytest
 ```
 
-CI runs all of the above on every PR.
+In this contributor environment, prefix CLI calls with `uv run` (above) or
+activate the venv first (`source .venv/bin/activate`) and drop the prefix.
+End users who installed via `pip install` use bare `niah`.
 
 ---
 
