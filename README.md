@@ -21,12 +21,16 @@ git clone https://github.com/gkamradt/needle-in-a-haystack.git
 cd needle-in-a-haystack
 uv sync
 
-# 2. Set the API key(s) you need
-export OPENAI_API_KEY=sk-...
+# 2. Drop your API key(s) in a .env file (auto-loaded by niah; .env is gitignored)
+echo "OPENAI_API_KEY=sk-..." >> .env
+# or: export OPENAI_API_KEY=sk-...   if you prefer not to use .env
 
-# 3. Look at the example run config, then run it
-niah validate configs/runs/single_needle.example.yaml
-niah run      configs/runs/single_needle.example.yaml
+# 3. Smoke-test the full pipeline with no API calls
+uv run niah run configs/runs/smoke.fake.yaml
+
+# 4. Validate then run an example against a real model
+uv run niah validate configs/runs/single_needle.example.yaml
+uv run niah run      configs/runs/single_needle.example.yaml
 ```
 
 The run writes one JSONL row per sweep cell. Each row carries the score, token

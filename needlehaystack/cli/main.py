@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from dotenv import load_dotenv
 
 from ..config.loader import (
     ConfigError,
@@ -38,6 +39,12 @@ from ..config.schema import ModelConfig, RunConfig
 from ..core.runner import Pricing, Runner
 from ..providers.registry import assert_provider_registered
 from .reconstruct import reconstruct_from_jsonl
+
+# Auto-load `.env` from the current working directory so `niah run`
+# picks up API keys without the user having to remember to `export`
+# them. Safe to call at module load — providers read env vars lazily
+# inside their factories, not at import time. No-op if no .env exists.
+load_dotenv()
 
 # Default place to look up bare model ids in a run config.
 DEFAULT_MODEL_DIRS = [Path("configs/models")]
