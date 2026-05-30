@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 from ..config.loader import (
     ConfigError,
@@ -38,13 +38,17 @@ from ..config.loader import (
 from ..config.schema import ModelConfig, RunConfig
 from ..core.runner import Pricing, Runner
 from ..providers.registry import assert_provider_registered
+from .demo import demo as _demo_command
 from .reconstruct import reconstruct_from_jsonl
 
-# Auto-load `.env` from the current working directory so `niah run`
-# picks up API keys without the user having to remember to `export`
-# them. Safe to call at module load — providers read env vars lazily
-# inside their factories, not at import time. No-op if no .env exists.
-load_dotenv()
+# Auto-load `.env` from the user's current working directory so
+# `niah run` / `niah demo` picks up API keys without them having to
+# `export` first. `usecwd=True` is important: the default walks up
+# from this source file, which would silently pull a developer's
+# project-root .env into any test or end-user invocation. Safe to
+# call at module load — providers read env vars lazily inside their
+# factories, not at import time. No-op if no .env exists.
+load_dotenv(dotenv_path=find_dotenv(usecwd=True))
 
 # Default place to look up bare model ids in a run config.
 DEFAULT_MODEL_DIRS = [Path("configs/models")]
@@ -55,6 +59,13 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
 )
+
+# Register the zero-config demo command. Lives in its own module to keep
+# main.py focused on config-driven flows.
+app.command(
+    name="demo",
+    help="Zero-config end-to-end demo run. Try this first.",
+)(_demo_command)
 
 
 # ---------------------------------------------------------------------------

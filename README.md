@@ -13,71 +13,51 @@ Adding more is a small plugin.
 
 ---
 
-## Install
+## Quick start
 
 ```bash
 pip install needlehaystack
-# or:  uv add needlehaystack
+niah demo --fake          # no API key, ~1s, proves the install works
 ```
 
-Drop the API key(s) you'll use into a `.env` file in the working directory —
-`niah` loads it automatically:
-
-```bash
-echo "OPENAI_API_KEY=sk-..." > .env
-```
-
-## Quick start
-
-Paste two tiny YAMLs and run. No clone, no extra setup.
-
-```bash
-# A model config (one file per model — reusable across many runs)
-cat > model.yaml <<'YAML'
-id: "openai-gpt-4o-mini"
-runtime: {sdk: "openai-python", api: "chat_completions"}
-client:  {api_key_env: "OPENAI_API_KEY"}
-request: {model: "gpt-4o-mini", max_tokens: 256, temperature: 0.0}
-pricing: {input: 0.15, output: 0.60}     # USD per 1M tokens
-YAML
-
-# A run config (what to actually do)
-cat > run.yaml <<'YAML'
-run_name: "first-run"
-model:    "model.yaml"
-
-task:     {type: "uuid"}                  # also: single, multi, uuid_chain
-haystack: {type: "files", path: "PaulGrahamEssays"}   # bundled in the wheel
-
-sweep:
-  context_lengths: [2000, 8000]
-  depth_percents:  [10.0, 50.0, 90.0]
-
-runner:   {concurrency: 3, retries: 1, resume: true}
-store:    {type: "jsonl", path: "results.jsonl"}
-YAML
-
-niah validate run.yaml
-niah run      run.yaml
-```
-
-You get six result rows in `results.jsonl` — one per `(length × depth)` cell —
-each with score, token usage, cost, and a tiny **recipe** that lets you rebuild
-the exact context the model saw:
+That runs a 2 × 3 sweep (2 context lengths × 3 depths = 6 cells) against an
+in-process fake model and writes `results.jsonl`. Inspect the exact context any
+cell saw:
 
 ```bash
 niah reconstruct results.jsonl --row 0
 ```
 
-That's the whole user-facing surface: write configs, `niah run` them, optionally
-`niah reconstruct` to inspect what a model actually received.
+### Demo against a real model
+
+```bash
+echo "OPENAI_API_KEY=sk-..." > .env       # niah auto-loads .env
+niah demo                                 # default: gpt-4o-mini, ~$0.01
+```
+
+Or pick another provider:
+
+```bash
+niah demo --provider anthropic            # needs ANTHROPIC_API_KEY
+niah demo --provider cohere               # needs COHERE_API_KEY
+```
+
+That's it. The demo uses sensible defaults (gpt-4o-mini, the bundled Paul
+Graham essays haystack, a single-fact needle, 6 cells) so you can see real
+output before learning anything about config files.
 
 ---
 
-## What you configure
+## Custom runs
 
-You point `niah` at **one run config** (YAML) that references **one model
-config** (also YAML). Examples live in [`configs/`](./configs).
+Once the demo works, drop the `demo` command and drive your own sweep with two
+small YAML files. You point `niah` at **one run config** that references **one
+model config**. Full examples live in [`configs/`](./configs).
+
+```bash
+niah validate my-run.yaml         # parse + resolve, no model calls
+niah run      my-run.yaml         # actually run the sweep, append to JSONL
+```
 
 ### Run config (`configs/runs/uuid_chain.example.yaml`)
 
