@@ -59,6 +59,19 @@ def build_provider(config: ModelConfig) -> ModelProvider:
     return factory(config)
 
 
+def assert_provider_registered(config: ModelConfig) -> None:
+    """Verify a plugin exists for `config.runtime` without constructing it.
+
+    Used by `niah validate` so config validation never requires API
+    credentials or a working SDK install.
+    """
+    key = (config.runtime.sdk, config.runtime.api)
+    if key not in PROVIDER_REGISTRY:
+        raise KeyError(
+            f"no provider registered for runtime {key!r}; registered: {sorted(PROVIDER_REGISTRY)}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Built-in: fake
 # ---------------------------------------------------------------------------

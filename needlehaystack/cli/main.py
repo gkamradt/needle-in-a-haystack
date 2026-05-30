@@ -36,6 +36,7 @@ from ..config.loader import (
 )
 from ..config.schema import ModelConfig, RunConfig
 from ..core.runner import Pricing, Runner
+from ..providers.registry import assert_provider_registered
 from .reconstruct import reconstruct_from_jsonl
 
 # Default place to look up bare model ids in a run config.
@@ -114,15 +115,24 @@ def validate(
         typer.Option("--model-dir", help="Extra directory to search for model YAMLs."),
     ] = None,
 ) -> None:
-    """Parse + validate `config` and its referenced model. No model calls."""
+    """Parse + validate `config` and its referenced model. No model calls.
+
+    Validation deliberately does **not** construct the provider's SDK
+    client, so it works without API credentials. It only verifies that
+    a provider plugin is registered for the model's `(sdk, api)` pair.
+    """
     try:
         run_cfg, model_cfg = _load_and_resolve(config, model_dir)
-        # Touch all the builders so registry-related errors surface here.
+        # Touch the registry-backed builders so unknown task / haystack /
+        # store / provider names surface here with friendly messages.
         build_task(run_cfg.task)
         build_haystack(run_cfg.haystack)
-        build_provider(model_cfg)
+        assert_provider_registered(model_cfg)
         build_sweep(run_cfg.sweep)
     except ConfigError as e:
+        typer.echo(f"invalid: {e}", err=True)
+        raise typer.Exit(code=2) from e
+    except KeyError as e:
         typer.echo(f"invalid: {e}", err=True)
         raise typer.Exit(code=2) from e
 

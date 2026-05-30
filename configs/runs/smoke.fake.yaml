@@ -1,0 +1,32 @@
+# End-to-end smoke run. No API keys required — uses the in-process
+# FakeProvider. Good for: "does the whole pipeline work on my machine?"
+#
+#   niah validate    configs/runs/smoke.fake.yaml
+#   niah run         configs/runs/smoke.fake.yaml
+#   niah reconstruct results/smoke.jsonl --row 0
+
+run_name: "smoke"
+model: "fake"          # configs/models/fake.yaml
+
+task:
+  type: "uuid"
+  needle_template: "The secret code is {uuid}."
+  question_template: "What is the secret code?"
+
+haystack:
+  type: "text"
+  text: "Filler sentence. Another filler sentence. More background prose."
+
+sweep:
+  context_lengths: [500, 1000, 2000]
+  depth_percents:  [0, 50, 100]
+  seeds: [1, 2]
+
+runner:
+  concurrency: 4
+  retries: 0
+  resume: true
+
+store:
+  type: "jsonl"
+  path: "results/smoke.jsonl"
