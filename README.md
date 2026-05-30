@@ -1,196 +1,286 @@
-# Needle In A Haystack - Pressure Testing LLMs
+# Needle In A Haystack
 
-A simple 'needle in a haystack' analysis to test in-context retrieval ability of long context LLMs.
+> Pressure-test LLM long-context retrieval. Now in v2.
 
-Supported model providers: OpenAI, Anthropic, Cohere
+`niah` runs a sweep of `(context length × needle depth)` cells against any
+configured model, scores each response, and writes one result row per cell to
+a JSONL file. Built-in tasks include single-fact lookup, multi-fact recall,
+single-UUID retrieval, and **UUID-chain hops** for testing multi-step
+reasoning over long contexts.
 
-Get the behind the scenes on the [overview video](https://youtu.be/KwRRuiCCdmc).
+Supported providers out of the box: **OpenAI**, **Anthropic**, **Cohere**.
+Adding more is a small plugin.
 
-![GPT-4-128 Context Testing](img/NeedleHaystackCodeSnippet.png)
+---
 
-## The Test
+## Quick start
 
-1. Place a random fact or statement (the 'needle') in the middle of a long context window (the 'haystack')
-2. Ask the model to retrieve this statement
-3. Iterate over various document depths (where the needle is placed) and context lengths to measure performance
+```bash
+# 1. Clone + install (uv handles the venv + lock)
+git clone https://github.com/gkamradt/needle-in-a-haystack.git
+cd needle-in-a-haystack
+uv sync
 
-This is the code that backed [this OpenAI](https://twitter.com/GregKamradt/status/1722386725635580292) and [Anthropic analysis](https://twitter.com/GregKamradt/status/1727018183608193393).
+# 2. Drop your API key(s) in a .env file (auto-loaded by niah; .env is gitignored)
+echo "OPENAI_API_KEY=sk-..." >> .env
+# or: export OPENAI_API_KEY=sk-...   if you prefer not to use .env
 
-The results from the original tests are in `/original_results`. The script has upgraded a lot since those test were ran so the data formats may not match your script results.
+# 3. Smoke-test the full pipeline with no API calls
+uv run niah run configs/runs/smoke.fake.yaml
 
-## Getting Started
-
-### Setup Virtual Environment
-
-We recommend setting up a virtual environment to isolate Python dependencies, ensuring project-specific packages without conflicting with system-wide installations.
-
-```zsh
-python3 -m venv venv
-source venv/bin/activate
+# 4. Validate then run an example against a real model
+uv run niah validate configs/runs/single_needle.example.yaml
+uv run niah run      configs/runs/single_needle.example.yaml
 ```
 
-### Environment Variables
+The run writes one JSONL row per sweep cell. Each row carries the score, token
+usage, cost, and a tiny **recipe** that lets you exactly reconstruct the
+context the model saw:
 
-- `NIAH_MODEL_API_KEY` - API key for interacting with the model. Depending on the provider, this gets used appropriately with the correct sdk.
-- `NIAH_EVALUATOR_API_KEY` - API key to use if `openai` evaluation strategy is used.
-
-### Install Package
-
-Install the package from PyPi:
-
-```zsh
-pip install needlehaystack
+```bash
+niah reconstruct results/single-needle-opus.jsonl --row 0
 ```
 
-### Run Test
+---
 
-Start using the package by calling the entry point `needlehaystack.run_test` from command line.
+## What you configure
 
-You can then run the analysis on OpenAI, Anthropic, or Cohere models with the following command line arguments:
+You point `niah` at **one run config** (YAML) that references **one model
+config** (also YAML). Examples live in [`configs/`](./configs).
 
-- `provider` - The provider of the model, available options are `openai`, `anthropic`, and `cohere`. Defaults to `openai`
-- `evaluator` - The evaluator, which can either be a `model` or `LangSmith`. See more on `LangSmith` below. If using a `model`, only `openai` is currently supported. Defaults to `openai`.
-- `model_name` - Model name of the language model accessible by the provider. Defaults to `gpt-3.5-turbo-0125`
-- `evaluator_model_name` - Model name of the language model accessible by the evaluator. Defaults to `gpt-3.5-turbo-0125`
+### Run config (`configs/runs/uuid_chain.example.yaml`)
 
-Additionally, `LLMNeedleHaystackTester` parameters can also be passed as command line arguments, except `model_to_test` and `evaluator`.
+```yaml
+run_name: "uuid-chain-opus"
+model: "anthropic-opus-4-medium"   # resolved against configs/models/
 
-Here are some example use cases.
+task:
+  type: "uuid_chain"
+  chain_length: 5
 
-Following command runs the test for openai model `gpt-3.5-turbo-0125` for a single context length of 2000 and single document depth of 50%.
+haystack:
+  type: "files"
+  path: "PaulGrahamEssays"
 
-```zsh
-needlehaystack.run_test --provider openai --model_name "gpt-3.5-turbo-0125" --document_depth_percents "[50]" --context_lengths "[2000]"
+sweep:
+  context_lengths: {min: 2000, max: 32000, num: 8,  scale: "linear"}
+  depth_percents:  {min: 0,    max: 100,   num: 11, scale: "sigmoid"}
+  seeds: [1, 2, 3]
+
+runner:
+  concurrency: 2
+  retries: 2
+  resume: true
+
+store:
+  type: "jsonl"
+  path: "results/uuid-chain-opus.jsonl"
 ```
 
-Following command runs the test for anthropic model `claude-2.1` for a single context length of 2000 and single document depth of 50%.
+### Model config (`configs/models/anthropic-opus-4-medium.yaml`)
 
-```zsh
-needlehaystack.run_test --provider anthropic --model_name "claude-2.1" --document_depth_percents "[50]" --context_lengths "[2000]"
+```yaml
+id: "anthropic-opus-4-medium"
+runtime:
+  sdk: "anthropic-python"
+  api: "messages"
+client:
+  api_key_env: "ANTHROPIC_API_KEY"
+request:
+  model: "claude-opus-4"
+  max_tokens: 120000
+  thinking:
+    type: "adaptive"
+  output_config:
+    effort: "medium"
+pricing:
+  input: 5.00      # USD per 1M input tokens
+  output: 25.00    # USD per 1M output tokens
 ```
 
-Following command runs the test for cohere model `command-r` for a single context length of 2000 and single document depth of 50%.
+Anything under `request:` is forwarded verbatim to the SDK, so adding new
+provider-specific knobs (`thinking`, `reasoning_effort`, `top_p`, …) doesn't
+require a code change.
 
-```zsh
-needlehaystack.run_test --provider cohere --model_name "command-r" --document_depth_percents "[50]" --context_lengths "[2000]"
+---
+
+## Built-in tasks
+
+| `task.type`    | What it does |
+|----------------|-------------|
+| `single`       | One fact placed at one depth; exact-match scored. |
+| `multi`        | N facts spread evenly through the context; fractional score. |
+| `uuid`         | One fresh UUID at one depth; model must repeat it. |
+| `uuid_chain`   | Chain of `A → B → C → …` links spread through the context. The question asks "what is the value associated with A?" **without** revealing the chain structure — the model has to discover the hops on its own. |
+
+Tasks are a small Protocol — see [`needlehaystack/tasks/`](./needlehaystack/tasks).
+Adding your own is one file and a registry call; nothing in the runner needs to
+change.
+
+```python
+from needlehaystack.tasks import register_task
+
+class MyCustomTask:
+    name = "my_task"
+    inserter_name = "single_depth"
+    def generate_needle(self, seed): ...
+    def insert(self, ctx, needle, depth): ...
+    def question(self, needle): ...
+    def score(self, response, needle): ...
+
+register_task("my_task", MyCustomTask)
 ```
-### For Contributors
 
-1. Fork and clone the repository.
-2. Create and activate the virtual environment as described above.
-3. Set the environment variables as described above.
-4. Install the package in editable mode by running the following command from repository root:
+Reference it from a run config with `task.type: "my_task"`.
 
-```zsh
-pip install -e .
+---
+
+## CLI
+
+```text
+niah run        <run.yaml>            run a sweep, append to JSONL
+niah run        <run.yaml> --dry-run  validate, resolve model, print plan, exit
+niah validate   <run.yaml>            parse + resolve without running
+niah reconstruct <results.jsonl> --row N [--out file]
+                                      rebuild the exact context shown to the model
 ```
 
-The package `needlehaystack` is available for import in your test cases. Develop, make changes and test locally.
+`--model-dir DIR` (repeatable) adds extra search paths for bare model ids.
 
-## `LLMNeedleHaystackTester` parameters:
+---
 
-- `model_to_test` - The model to run the needle in a haystack test on. Default is None.
-- `evaluator` - An evaluator to evaluate the model's response. Default is None.
-- `needle` - The statement or fact which will be placed in your context ('haystack')
-- `haystack_dir` - The directory which contains the text files to load as background context. Only text files are supported
-- `retrieval_question` - The question with which to retrieve your needle in the background context
-- `results_version` - You may want to run your test multiple times for the same combination of length/depth, change the version number if so
-- `num_concurrent_requests` - Default: 1. Set higher if you'd like to run more requests in parallel. Keep in mind rate limits.
-- `save_results` - Whether or not you'd like to save your results to file. They will be temporarily saved in the object regardless. True/False. If `save_results = True`, then this script will populate a `result/` directory with evaluation information. Due to potential concurrent requests each new test will be saved as a few file.
-- `save_contexts` - Whether or not you'd like to save your contexts to file. **Warning** these will get very long. True/False
-- `final_context_length_buffer` - The amount of context to take off each input to account for system messages and output tokens. This can be more intelligent but using a static value for now. Default 200 tokens.
-- `context_lengths_min` - The starting point of your context lengths list to iterate
-- `context_lengths_max` - The ending point of your context lengths list to iterate
-- `context_lengths_num_intervals` - The number of intervals between your min/max to iterate through
-- `context_lengths` - A custom set of context lengths. This will override the values set for `context_lengths_min`, max, and intervals if set
-- `document_depth_percent_min` - The starting point of your document depths. Should be int > 0
-- `document_depth_percent_max` - The ending point of your document depths. Should be int < 100
-- `document_depth_percent_intervals` - The number of iterations to do between your min/max points
-- `document_depth_percents` - A custom set of document depths lengths. This will override the values set for `document_depth_percent_min`, max, and intervals if set
-- `document_depth_percent_interval_type` - Determines the distribution of depths to iterate over. 'linear' or 'sigmoid
-- `seconds_to_sleep_between_completions` - Default: None, set # of seconds if you'd like to slow down your requests
-- `print_ongoing_status` - Default: True, whether or not to print the status of test as they complete
+## Result rows & reconstruction
 
-`LLMMultiNeedleHaystackTester` parameters:
+Each row in the JSONL is small (a few KB) regardless of context size. We don't
+store the rendered 200k-token context per row — that would balloon a single
+sweep into gigabytes. Instead each row carries a **recipe**:
 
-- `multi_needle` - True or False, whether to run multi-needle
-- `needles` - List of needles to insert in the context
+```json
+{
+  "schema_version": 2,
+  "run_name": "uuid-chain-opus",
+  "model_id": "anthropic-opus-4-medium",
+  "task_type": "uuid_chain",
+  "context_length": 32000,
+  "target_depth_percent": 50.0,
+  "recipe": {
+    "haystack": {"type": "files", "path": "PaulGrahamEssays"},
+    "inserter": "even_spread",
+    "needle_placements": [
+      {"text": "abc... maps to def...", "insertion_token_index": 15876, "actual_depth_percent": 49.6},
+      ...
+    ],
+    "final_context_token_count": 32082
+  },
+  "expected_answer": "the-final-uuid",
+  "prompt_question": "What is the value associated with abc-...?",
+  "response": "...",
+  "score": {"value": 0.6, "details": {"hops_correct": 3, "chain_length": 5}},
+  "usage": {"input_tokens": 32100, "output_tokens": 412},
+  "cost_usd": 0.171,
+  "duration_seconds": 12.4,
+  "status": "ok",
+  "seed": 1,
+  "timestamp_utc": "2026-..."
+}
+```
 
-Other Parameters:
+`niah reconstruct` walks the recipe and produces a byte-identical string of
+what the model actually saw, which is what you want when a result is
+surprising and you want to read the prompt.
 
-- `model_name` - The name of the model you'd like to use. Should match the exact value which needs to be passed to the api. Ex: For OpenAI inference and evaluator models it would be `gpt-3.5-turbo-0125`.
+---
 
-## Results Visualization
+## Extending
 
-`LLMNeedleInHaystackVisualization.ipynb` holds the code to make the pivot table visualization. The pivot table was then transferred to Google Slides for custom annotations and formatting. See the [google slides version](https://docs.google.com/presentation/d/15JEdEBjm32qBbqeYM6DK6G-3mUJd7FAJu-qEzj8IYLQ/edit?usp=sharing). See an overview of how this viz was created [here](https://twitter.com/GregKamradt/status/1729573848893579488).
+- **New provider**: write a class satisfying `ModelProvider` and call
+  `register_provider(sdk, api, factory)`. See
+  [`needlehaystack/providers/openai.py`](./needlehaystack/providers/openai.py)
+  as a reference.
+- **New task**: as above; see
+  [`needlehaystack/tasks/uuid_chain.py`](./needlehaystack/tasks/uuid_chain.py).
+- **New haystack source**: implement `HaystackSource` (`load(min_tokens)` +
+  `descriptor()`).
+- **New scorer**: implement `Scorer` (`score(response, needle)`).
 
-## OpenAI's GPT-4-128K (Run 11/8/2023)
+The system is intentionally a set of small Protocols connected by registries
+so contributors never need to edit the runner.
+
+---
+
+## Contributing
+
+```bash
+uv sync --extra dev
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy needlehaystack
+uv run pytest
+```
+
+CI runs all of the above on every PR.
+
+---
+
+## Original story & historical results
+
+The original 2023 runs that started all this:
+
+- **Behind-the-scenes video**: [youtu.be/KwRRuiCCdmc](https://youtu.be/KwRRuiCCdmc)
+- **OpenAI GPT-4 analysis**: [tweet thread](https://twitter.com/GregKamradt/status/1722386725635580292)
+- **Anthropic Claude 2.1 analysis**: [tweet thread](https://twitter.com/GregKamradt/status/1727018183608193393)
+- **How the viz was built**: [tweet](https://twitter.com/GregKamradt/status/1729573848893579488) ·
+  [Google Slides version](https://docs.google.com/presentation/d/15JEdEBjm32qBbqeYM6DK6G-3mUJd7FAJu-qEzj8IYLQ/edit?usp=sharing)
+
+![Needle In A Haystack code snippet](img/NeedleHaystackCodeSnippet.png)
+
+### OpenAI's GPT-4-128K (Run 11/8/2023)
 
 <img src="img/GPT_4_testing.png" alt="GPT-4-128 Context Testing" width="800"/>
 
-## Anthropic's Claude 2.1 (Run 11/21/2023)
+### Anthropic's Claude 2.1 (Run 11/21/2023)
 
-<img src="img/Claude_2_1_testing.png" alt="GPT-4-128 Context Testing" width="800"/>
+<img src="img/Claude_2_1_testing.png" alt="Claude 2.1 Context Testing" width="800"/>
 
-## Multi Needle Evaluator
+The raw result files from those original runs are preserved in
+[`original_results/`](./original_results) for posterity — the schema does not
+match v2, so they don't load with the new tooling.
 
-To enable multi-needle insertion into our context, use `--multi_needle True`.
+### How multi-needle spacing works (still accurate in v2)
 
-This inserts the first needle at the specified `depth_percent`, then evenly distributes subsequent needles through the remaining context after this depth.
-
-For even spacing, it calculates the `depth_percent_interval` as:
+Given N needles and a starting `depth_percent`, the `EvenSpreadInserter`
+places the first needle at `depth_percent`, then distributes the rest evenly
+through the remaining context up to 100%. The interval is:
 
 ```
-depth_percent_interval = (100 - depth_percent) / len(self.needles)
+depth_percent_interval = (100 - depth_percent) / N
 ```
 
-So, the first needle is placed at a depth percent of `depth_percent`, the second at `depth_percent + depth_percent_interval`, the third at `depth_percent + 2 * depth_percent_interval`, and so on.
-
-Following example shows the depth percents for the case of 10 needles and depth_percent of 40%.
+So for N=10 needles starting at depth_percent=40:
 
 ```
 depth_percent_interval = (100 - 40) / 10 = 6
 
 Needle 1: 40
-Needle 2: 40 + 6 = 46
-Needle 3: 40 + 2 * 6 = 52
-Needle 4: 40 + 3 * 6 = 58
-Needle 5: 40 + 4 * 6 = 64
-Needle 6: 40 + 5 * 6 = 70
-Needle 7: 40 + 6 * 6 = 76
-Needle 8: 40 + 7 * 6 = 82
-Needle 9: 40 + 8 * 6 = 88
-Needle 10: 40 + 9 * 6 = 94
+Needle 2: 46
+Needle 3: 52
+Needle 4: 58
+Needle 5: 64
+Needle 6: 70
+Needle 7: 76
+Needle 8: 82
+Needle 9: 88
+Needle 10: 94
 ```
 
-## LangSmith Evaluator
+v2 fixes a bug in the v1 multi-needle code where each needle's reported depth
+was off by however much the earlier needles had inflated the token count. The
+new inserter computes target depths against the pre-insertion length and
+reports the true depth each needle landed at.
 
-You can use LangSmith to orchestrate evals and store results.
-
-(1) Sign up for [LangSmith](https://docs.smith.langchain.com/setup)
-(2) Set env variables for LangSmith as specified in the setup.
-(3) In the `Datasets + Testing` tab, use `+ Dataset` to create a new dataset, call it `multi-needle-eval-sf` to start.
-(4) Populate the dataset with a test question:
-
-```
-question: What are the 5 best things to do in San Franscisco?
-answer: "The 5 best things to do in San Francisco are: 1) Go to Dolores Park. 2) Eat at Tony's Pizza Napoletana. 3) Visit Alcatraz. 4) Hike up Twin Peaks. 5) Bike across the Golden Gate Bridge"
-```
-
-![Screenshot 2024-03-05 at 4 54 15 PM](https://github.com/rlancemartin/LLMTest_NeedleInAHaystack/assets/122662504/2f903955-ed1d-49cc-b995-ed0407d6212a)
-(5) Run with ` --evaluator langsmith` and `--eval_set multi-needle-eval-sf` to run against our recently created eval set.
-
-Let's see all these working together on a new dataset, `multi-needle-eval-pizza`.
-
-Here is the `multi-needle-eval-pizza` eval set, which has a question and reference answer. You can also and resulting runs:
-https://smith.langchain.com/public/74d2af1c-333d-4a73-87bc-a837f8f0f65c/d
-
-Here is the command to run this using multi-needle eval and passing the relevant needles:
-
-```
-needlehaystack.run_test --evaluator langsmith --context_lengths_num_intervals 3 --document_depth_percent_intervals 3 --provider openai --model_name "gpt-4-0125-preview" --multi_needle True --eval_set multi-needle-eval-pizza --needles '["Figs are one of the three most delicious pizza toppings.", "Prosciutto is one of the three most delicious pizza toppings.", "Goat cheese is one of the three most delicious pizza toppings."]'
-```
+---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE.txt) file for details. Use of this software requires attribution to the original author and project, as detailed in the license.
+MIT — see [LICENSE.txt](LICENSE.txt). Use of this software requires
+attribution to the original author and project.

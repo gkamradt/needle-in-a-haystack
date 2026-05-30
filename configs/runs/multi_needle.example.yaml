@@ -1,0 +1,23 @@
+run_name: "multi-needle-opus"
+model: "anthropic-opus-4-medium"
+
+task:
+  type: "multi"
+  # Defaults are the pizza-ingredients trio; override here to use your own.
+
+haystack:
+  type: "files"
+  path: "PaulGrahamEssays"
+
+sweep:
+  context_lengths: {min: 1000, max: 32000, num: 8, scale: "linear"}
+  depth_percents:  [0, 25, 50, 75, 100]
+
+runner:
+  concurrency: 4
+  retries: 2
+  resume: true
+
+store:
+  type: "jsonl"
+  path: "results/multi-needle-opus.jsonl"

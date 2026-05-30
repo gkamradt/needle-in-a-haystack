@@ -1,0 +1,31 @@
+# Example: classic single-fact needle sweep across many context lengths
+# and depths. Copy this file and tweak — these are starting points, not
+# defaults shipped in the wheel.
+
+run_name: "single-needle-opus"
+model: "anthropic-opus-4-medium"   # resolved against configs/models/
+
+task:
+  type: "single"
+  # Override the defaults if you want a different fact:
+  # needle_text: "..."
+  # expected_answer: "..."
+  # question_template: "..."
+
+haystack:
+  type: "files"
+  path: "PaulGrahamEssays"
+
+sweep:
+  context_lengths: {min: 1000, max: 32000, num: 15, scale: "linear"}
+  depth_percents:  {min: 0,    max: 100,   num: 11, scale: "sigmoid"}
+
+runner:
+  concurrency: 4
+  retries: 2
+  sleep_between_seconds: 0
+  resume: true
+
+store:
+  type: "jsonl"
+  path: "results/single-needle-opus.jsonl"

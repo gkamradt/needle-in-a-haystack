@@ -1,110 +1,96 @@
+"""Anthropic provider plugin (Messages API).
+
+Registered under `(runtime.sdk, runtime.api) = ("anthropic-python", "messages")`.
+
+The provider forwards the model config's `request:` block as kwargs to
+`messages.create`, with two notable behaviors:
+
+- Anthropic's API takes `system` as a top-level kwarg (not a message),
+  so we pass it that way.
+- Provider-specific knobs like `thinking` and `output_config` from the
+  example config flow through untouched, courtesy of `extra="allow"` on
+  `ModelRequest`.
+
+Streaming is stripped from the forwarded kwargs — same rationale as the
+OpenAI provider.
+"""
+
+from __future__ import annotations
+
 import os
-import pkg_resources
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
-from operator import itemgetter
-from typing import Optional
+from ..core.types import Usage
+from .base import Completion
+from .registry import register_provider
 
-from anthropic import AsyncAnthropic
-from anthropic import Anthropic as AnthropicModel
-from langchain_anthropic import ChatAnthropic
-from langchain.prompts import PromptTemplate
+if TYPE_CHECKING:
+    from ..config.schema import ModelConfig
 
-from .model import ModelProvider
 
-class Anthropic(ModelProvider):
-    DEFAULT_MODEL_KWARGS: dict = dict(max_tokens_to_sample  = 300,
-                                      temperature           = 0)
+@dataclass(slots=True)
+class AnthropicProvider:
+    """`ModelProvider` backed by the Anthropic Python SDK Messages API."""
 
-    def __init__(self,
-                 model_name: str = "claude-2.1",
-                 model_kwargs: dict = DEFAULT_MODEL_KWARGS):
-        """
-        :param model_name: The name of the model. Default is 'claude'.
-        :param model_kwargs: Model configuration. Default is {max_tokens_to_sample: 300, temperature: 0}
-        """
+    id: str
+    request_model: str
+    client: Any  # anthropic.AsyncAnthropic
+    extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
-        if "claude" not in model_name:
-            raise ValueError("If the model provider is 'anthropic', the model name must include 'claude'. See https://docs.anthropic.com/claude/reference/selecting-a-model for more details on Anthropic models")
-        
-        api_key = os.getenv('NIAH_MODEL_API_KEY')
-        if (not api_key):
-            raise ValueError("NIAH_MODEL_API_KEY must be in env.")
+    async def complete(self, system: str, user: str) -> Completion:
+        # `system` is a top-level kwarg in the Messages API. Omit it
+        # entirely when empty so we don't send `system=""` (which is
+        # technically valid but ugly).
+        call_kwargs: dict[str, Any] = dict(self.extra_kwargs)
+        call_kwargs["model"] = self.request_model
+        call_kwargs["messages"] = [{"role": "user", "content": user}]
+        if system:
+            call_kwargs["system"] = system
 
-        self.model_name = model_name
-        self.model_kwargs = model_kwargs
-        self.api_key = api_key
+        resp = await self.client.messages.create(**call_kwargs)
+        text = _extract_text(resp)
+        usage: Usage | None = None
+        if getattr(resp, "usage", None) is not None:
+            usage = Usage(
+                input_tokens=int(resp.usage.input_tokens),
+                output_tokens=int(resp.usage.output_tokens),
+            )
+        return Completion(text=text, usage=usage)
 
-        self.model = AsyncAnthropic(api_key=self.api_key)
-        self.tokenizer = AnthropicModel().get_tokenizer()
 
-        resource_path = pkg_resources.resource_filename('needlehaystack', 'providers/Anthropic_prompt.txt')
+def _extract_text(resp: Any) -> str:
+    """Concatenate the `text` blocks of an Anthropic Messages response.
 
-        # Generate the prompt structure for the Anthropic model
-        # Replace the following file with the appropriate prompt structure
-        with open(resource_path, 'r') as file:
-            self.prompt_structure = file.read()
+    Responses come back as a list of content blocks (`text`, `thinking`,
+    `tool_use`, etc.). We only emit `text` blocks; thinking content stays
+    on the response object for callers that want it.
+    """
+    content = getattr(resp, "content", None) or []
+    parts: list[str] = []
+    for block in content:
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            parts.append(getattr(block, "text", ""))
+    return "".join(parts)
 
-    async def evaluate_model(self, prompt: str) -> str:
-        response = await self.model.completions.create(
-            model=self.model_name,
-            prompt=prompt,
-            **self.model_kwargs)
-        return response.completion
 
-    def generate_prompt(self, context: str, retrieval_question: str) -> str | list[dict[str, str]]:
-        return self.prompt_structure.format(
-            retrieval_question=retrieval_question,
-            context=context)
-    
-    def encode_text_to_tokens(self, text: str) -> list[int]:
-        return self.tokenizer.encode(text).ids
-    
-    def decode_tokens(self, tokens: list[int], context_length: Optional[int] = None) -> str:
-        # Assuming you have a different decoder for Anthropic
-        return self.tokenizer.decode(tokens[:context_length])
-    
-    def get_langchain_runnable(self, context: str) -> str:
-        """
-        Creates a LangChain runnable that constructs a prompt based on a given context and a question, 
-        queries the Anthropic model, and returns the model's response. This method leverages the LangChain 
-        library to build a sequence of operations: extracting input variables, generating a prompt, 
-        querying the model, and processing the response.
+def _build_anthropic(config: ModelConfig) -> AnthropicProvider:
+    """Factory: build an `AnthropicProvider` from a parsed `ModelConfig`."""
+    from anthropic import AsyncAnthropic  # lazy import
 
-        Args:
-            context (str): The context or background information relevant to the user's question. 
-            This context is provided to the model to aid in generating relevant and accurate responses.
+    api_key = os.environ.get(config.client.api_key_env) if config.client.api_key_env else None
+    client = AsyncAnthropic(api_key=api_key)
+    extras = config.request.model_dump(
+        exclude={"model", "stream"},
+        exclude_none=True,
+    )
+    return AnthropicProvider(
+        id=config.id,
+        request_model=config.request.model,
+        client=client,
+        extra_kwargs=extras,
+    )
 
-        Returns:
-            str: A LangChain runnable object that can be executed to obtain the model's response to a 
-            dynamically provided question. The runnable encapsulates the entire process from prompt 
-            generation to response retrieval.
 
-        Example:
-            To use the runnable:
-                - Define the context and question.
-                - Execute the runnable with these parameters to get the model's response.
-        """
-
-        template = """Human: You are a helpful AI bot that answers questions for a user. Keep your response short and direct" \n
-        <document_content>
-        {context} 
-        </document_content>
-        Here is the user question:
-        <question>
-         {question}
-        </question>
-        Don't give information outside the document or repeat your findings.
-        Assistant: Here is the most relevant information in the documents:"""
-        
-        prompt = PromptTemplate(
-            template=template,
-            input_variables=["context", "question"],
-        )
-        # Create a LangChain runnable
-        model = ChatAnthropic(temperature=0, model=self.model_name)
-        chain = ( {"context": lambda x: context,
-                  "question": itemgetter("question")} 
-                | prompt 
-                | model 
-                )
-        return chain
+register_provider("anthropic-python", "messages", _build_anthropic)

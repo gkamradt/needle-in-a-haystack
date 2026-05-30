@@ -1,2 +1,3 @@
-from .llm_needle_haystack_tester import LLMNeedleHaystackTester
-from .llm_multi_needle_haystack_tester import LLMMultiNeedleHaystackTester
+"""Needle In A Haystack — long-context retrieval benchmark for LLMs."""
+
+__version__ = "2.0.0"

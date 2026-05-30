@@ -1,113 +1,85 @@
+"""Cohere provider plugin (chat API).
+
+Registered under `(runtime.sdk, runtime.api) = ("cohere-python", "chat")`.
+
+Cohere's v1 chat endpoint takes the user turn as `message=` and the
+system instructions as `preamble=`. We adapt the `system`/`user` shape
+the runner uses to that signature; everything else from `request:` (e.g.
+`temperature`) passes through unchanged.
+
+A single `AsyncClient` is constructed at factory time and reused across
+calls.
+"""
+
+from __future__ import annotations
+
 import os
-import pkg_resources
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
-from operator import itemgetter
-from typing import Optional
-from langchain.prompts import PromptTemplate
-from langchain_cohere import ChatCohere
+from ..core.types import Usage
+from .base import Completion
+from .registry import register_provider
 
-from cohere import Client, AsyncClient
+if TYPE_CHECKING:
+    from ..config.schema import ModelConfig
 
-from .model import ModelProvider
 
-class Cohere(ModelProvider):
-    DEFAULT_MODEL_KWARGS: dict = dict(max_tokens          = 50,
-                                      temperature           = 0.3)
+@dataclass(slots=True)
+class CohereProvider:
+    """`ModelProvider` backed by the Cohere Python SDK's chat API."""
 
-    def __init__(self,
-                 model_name: str = "command-r",
-                 model_kwargs: dict = DEFAULT_MODEL_KWARGS):
-        """
-        :param model_name: The name of the model. Default is 'command-r'.
-        :param model_kwargs: Model configuration. Default is {max_tokens_to_sample: 300, temperature: 0}
-        """
+    id: str
+    request_model: str
+    client: Any  # cohere.AsyncClient
+    extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
-        api_key = os.getenv('NIAH_MODEL_API_KEY')
-        if (not api_key):
-            raise ValueError("NIAH_MODEL_API_KEY must be in env.")
+    async def complete(self, system: str, user: str) -> Completion:
+        call_kwargs: dict[str, Any] = dict(self.extra_kwargs)
+        call_kwargs["model"] = self.request_model
+        call_kwargs["message"] = user
+        if system:
+            call_kwargs["preamble"] = system
 
-        self.model_name = model_name
-        self.model_kwargs = model_kwargs
-        self.api_key = api_key
+        resp = await self.client.chat(**call_kwargs)
+        text = getattr(resp, "text", "") or ""
+        usage = _extract_usage(resp)
+        return Completion(text=text, usage=usage)
 
-        self.client = AsyncClient(api_key=self.api_key)
 
-    async def evaluate_model(self, prompt: tuple[str, list[dict, str, str]]) -> str:
-        message, chat_history = prompt
-        response = await self.client.chat(message=message, chat_history=chat_history, model=self.model_name, **self.model_kwargs)
-        return response.text
-
-    def generate_prompt(self, context: str, retrieval_question: str) -> tuple[str, list[dict[str, str]]]:
-        '''
-        Prepares a chat-formatted prompt
-        Args:
-            context (str): The needle in a haystack context
-            retrieval_question (str): The needle retrieval question
-
-        Returns:
-            tuple[str, list[dict[str, str]]]: prompt encoded as last message, and chat history
-
-        '''
-        return (
-            f"{retrieval_question} Don't give information outside the document or repeat your findings", 
-            [{
-                "role": "System",
-                "message": "You are a helpful AI bot that answers questions for a user. Keep your response short and direct"
-            },
-            {
-                "role": "User",
-                "message": context
-            }]
+def _extract_usage(resp: Any) -> Usage | None:
+    """Cohere reports usage via `meta.tokens.{input,output}_count` in v5."""
+    meta = getattr(resp, "meta", None)
+    if meta is None:
+        return None
+    tokens = getattr(meta, "tokens", None)
+    if tokens is None:
+        return None
+    try:
+        return Usage(
+            input_tokens=int(tokens.input_count),
+            output_tokens=int(tokens.output_count),
         )
-    
-    def encode_text_to_tokens(self, text: str) -> list[int]:
-        if not text: return []
-        return Client().tokenize(text=text, model=self.model_name).tokens
-
-    def decode_tokens(self, tokens: list[int], context_length: Optional[int] = None) -> str:
-        # Assuming you have a different decoder for Anthropic
-        return Client().detokenize(tokens=tokens[:context_length], model=self.model_name).text
-
-    def get_langchain_runnable(self, context: str):
-        """
-        Creates a LangChain runnable that constructs a prompt based on a given context and a question.
-
-        Args:
-            context (str): The context or background information relevant to the user's question. 
-            This context is provided to the model to aid in generating relevant and accurate responses.
-
-        Returns:
-            str: A LangChain runnable object that can be executed to obtain the model's response to a 
-            dynamically provided question. The runnable encapsulates the entire process from prompt 
-            generation to response retrieval.
-
-        Example:
-            To use the runnable:
-                - Define the context and question.
-                - Execute the runnable with these parameters to get the model's response.
-        """
+    except AttributeError:
+        return None
 
 
-        template = """Human: You are a helpful AI bot that answers questions for a user. Keep your response short and direct" \n
-        <document_content>
-        {context} 
-        </document_content>
-        Here is the user question:
-        <question>
-         {question}
-        </question>
-        Don't give information outside the document or repeat your findings.
-        Assistant: Here is the most relevant information in the documents:"""
-        
-        api_key = os.getenv('NIAH_MODEL_API_KEY')
-        model = ChatCohere(cohere_api_key=api_key, temperature=0.3, model=self.model_name)
-        prompt = PromptTemplate(
-            template=template,
-            input_variables=["context", "question"],
-        )
-        chain = ( {"context": lambda x: context,
-                  "question": itemgetter("question")} 
-                | prompt 
-                | model 
-                )
-        return chain
+def _build_cohere(config: ModelConfig) -> CohereProvider:
+    """Factory: build a `CohereProvider` from a parsed `ModelConfig`."""
+    from cohere import AsyncClient  # lazy import
+
+    api_key = os.environ.get(config.client.api_key_env) if config.client.api_key_env else None
+    client = AsyncClient(api_key=api_key)
+    extras = config.request.model_dump(
+        exclude={"model", "stream"},
+        exclude_none=True,
+    )
+    return CohereProvider(
+        id=config.id,
+        request_model=config.request.model,
+        client=client,
+        extra_kwargs=extras,
+    )
+
+
+register_provider("cohere-python", "chat", _build_cohere)

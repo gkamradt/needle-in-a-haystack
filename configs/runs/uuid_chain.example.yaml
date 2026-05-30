@@ -1,0 +1,26 @@
+run_name: "uuid-chain-opus"
+model: "anthropic-opus-4-medium"
+
+task:
+  type: "uuid_chain"
+  chain_length: 5
+  # The default question deliberately does not reveal that this is a
+  # chain. The model must discover the hops on its own.
+
+haystack:
+  type: "files"
+  path: "PaulGrahamEssays"
+
+sweep:
+  context_lengths: {min: 2000, max: 32000, num: 8, scale: "linear"}
+  depth_percents:  {min: 0,    max: 100,   num: 11, scale: "sigmoid"}
+  seeds: [1, 2, 3]
+
+runner:
+  concurrency: 2          # chain task can be expensive — keep concurrency low
+  retries: 2
+  resume: true
+
+store:
+  type: "jsonl"
+  path: "results/uuid-chain-opus.jsonl"

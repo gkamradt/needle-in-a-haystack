@@ -1,0 +1,13 @@
+id: "openai-gpt-4o-mini"
+runtime:
+  sdk: "openai-python"
+  api: "chat_completions"
+client:
+  api_key_env: "OPENAI_API_KEY"
+request:
+  model: "gpt-4o-mini"
+  max_tokens: 256
+  temperature: 0.0
+pricing:
+  input: 0.15      # USD per 1M input tokens
+  output: 0.60     # USD per 1M output tokens

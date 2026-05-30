@@ -2,6 +2,9 @@
 /contexts
 /results
 
+# Refactor planning docs (kept locally, not shipped)
+/docs/refactor/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
