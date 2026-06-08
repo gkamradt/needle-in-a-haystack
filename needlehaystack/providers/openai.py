@@ -61,7 +61,8 @@ def _build_openai(config: ModelConfig) -> OpenAIProvider:
     from openai import AsyncOpenAI  # lazy: only imported when the plugin runs
 
     api_key = os.environ.get(config.client.api_key_env) if config.client.api_key_env else None
-    client = AsyncOpenAI(api_key=api_key)
+    base_url = os.environ.get(config.client.base_url_env) if config.client.base_url_env else None
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
     # Forward every `request:` key except the ones we handle explicitly.
     # `stream` is stripped because our `complete()` returns a single
     # aggregated `Completion`, not a stream.
