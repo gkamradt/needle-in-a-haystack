@@ -40,6 +40,7 @@ class ModelClient(BaseModel):
     """SDK client construction inputs (mostly auth)."""
 
     api_key_env: str | None = None
+    base_url_env: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
